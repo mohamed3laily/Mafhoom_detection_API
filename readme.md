@@ -2,4 +2,4 @@
 
 # pip install -r requirements.txt
 
-## the run python app.py
+## then run: python app.py

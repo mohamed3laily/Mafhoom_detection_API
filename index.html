@@ -29,7 +29,7 @@
             body: JSON.stringify({ frame: frame }),
           });
           let result = await response.json();
-          console.log("Prediction:", result); // Print the prediction to the console
+          console.log("Prediction:", result);
           updateOutput(result.predicted_class);
         } catch (error) {
           console.error("Error sending frame:", error);
@@ -47,8 +47,7 @@
         canvas.height = video.videoHeight;
         let context = canvas.getContext("2d");
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        console.log("Captured canvas:", canvas); // Log the captured canvas
-        return canvas.toDataURL("image/jpeg");
+        return canvas.toDataURL("image/jpeg").split(",")[1]; // Remove the prefix
       }
 
       async function startVideo() {
@@ -62,7 +61,6 @@
           video.addEventListener("play", () => {
             setInterval(() => {
               let frame = captureFrame(video);
-              console.log("Captured frame:", frame);
               sendFrame(frame);
             }, 100); // Capture and send a frame every 100 ms
           });

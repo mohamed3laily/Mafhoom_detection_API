@@ -9,6 +9,7 @@ import base64
 from flask_cors import CORS
 from tensorflow_addons.layers import MultiHeadAttention
 from tensorflow.keras.utils import custom_object_scope
+import logging
 
 # Define actions
 actions = ['computers', 'faculty', 'Hello', 'I am', 'information', 'student', 'university', 'Mansoura', 'in', 'and']

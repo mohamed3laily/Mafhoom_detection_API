@@ -16,10 +16,10 @@ import os
 load_dotenv()
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO) 
 
 # Define actions
-actions = ['computers', 'faculty', 'Hello', 'I am', 'information', 'student', 'university', 'Mansoura', 'in', 'and']
+actions =  ['student','computer','information','hello','iloveu','thanks']
 
 # Define a custom Transformer Encoder layer
 class TransformerEncoder(tf.keras.layers.Layer):
@@ -47,25 +47,40 @@ app = Flask(__name__)
 CORS(app)
 
 # Load the model
-model_path = "models/model.h5"
+model_path = "models/100ex_6words.h5"
 with custom_object_scope({'TransformerEncoder': TransformerEncoder}):
     model = load_model(model_path, compile=False)
 
 # Recompile the model with a new optimizer
-model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+#model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
 # Initialize MediaPipe Holistic
 mp_holistic = mp.solutions.holistic
 
-def mediapipe_detection(image, model):
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    image.flags.writeable = False
-    results = model.process(image)
-    image.flags.writeable = True
-    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-    return image, results
+def mediapipe_detection(base64_image, model):
+    try:
+        # Decode base64 image
+        img_data = base64.b64decode(base64_image)
+        nparr = np.frombuffer(img_data, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if image is None:
+            raise ValueError("Failed to decode image")
+        
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image.flags.writeable = False
+        results = model.process(image)
+        image.flags.writeable = True
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        return image, results
+    except Exception as e:
+        logging.error(f"Error in mediapipe_detection: {str(e)}")
+        return None, None
 
 def extract_keypoints(results):
+    if results is None:
+        return np.zeros(1662)  # Return zero array if results is None
+    
     pose = np.zeros(132)
     face = np.zeros(1404)
     lh = np.zeros(21*3)
@@ -95,57 +110,66 @@ def predict_sequence():
         sequence = []
         sentence = []
         predictions = []
+        confidence_values = []  # List to store confidence values
         threshold = 0.5
 
         with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
             for i, frame_data in enumerate(frames):
                 try:
-                    # Decode base64 image
-                    img_data = base64.b64decode(frame_data.split(',')[1])
-                    nparr = np.frombuffer(img_data, np.uint8)
-                    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                    
-                    if frame is None:
-                        logging.error(f"Frame {i} is None after decoding")
-                        continue
-
                     # Make detections
-                    image, results = mediapipe_detection(frame, holistic)
+                    image, results = mediapipe_detection(frame_data, holistic)
+                    
+                    if image is None or results is None:
+                        logging.warning(f"Skipping frame {i} due to detection failure")
+                        continue
 
                     # Extract keypoints
                     keypoints = extract_keypoints(results)
 
                     # Append keypoints to sequence
                     sequence.append(keypoints)
-                    if len(sequence) > 30:
-                        sequence.pop(0)
+                    sequence = sequence[-30:]  # Keep only the last 30 frames
 
                     if len(sequence) == 30:
-                        res = model.predict(np.expand_dims(sequence, axis=0))[0]
+                        input_data = np.expand_dims(sequence, axis=0)
+                        logging.info(f"Input shape: {input_data.shape}")
+                        res = model.predict(input_data)[0]
+                        logging.info(f"Prediction result: {res}")
                         predicted_action_index = np.argmax(res)
-                        predictions.append(predicted_action_index)
+                        
+                        predictions.append(actions[predicted_action_index])
+                        confidence_value = res[predicted_action_index]  # Confidence value for the predicted action
+                        confidence_values.append(confidence_value)
 
-                        if len(predictions) >= 10 and np.unique(predictions[-10:])[0] == predicted_action_index:
-                            if res[predicted_action_index] > threshold:
-                                predicted_action = actions[predicted_action_index]
-                                if not sentence or predicted_action != sentence[-1]:
-                                    sentence.append(predicted_action)
+                        if len(predictions) >= 10 and np.unique(predictions[-10:])[0] == actions[predicted_action_index]:
+                            if confidence_value > threshold:
+                                if len(sentence) > 0:
+                                    if actions[predicted_action_index] != sentence[-1]:
+                                        sentence.append(actions[predicted_action_index])
+                                else:
+                                    sentence.append(actions[predicted_action_index])
 
                         if len(sentence) > 5:
                             sentence = sentence[-5:]
+
                 except Exception as frame_error:
                     logging.error(f"Error processing frame {i}: {str(frame_error)}")
                     continue
 
+        logging.info(f"Predicted sentence: {' '.join(sentence)}")
+        logging.info(f"Predictions: {predictions}")
+        logging.info(f"Confidence values: {confidence_values}")
+
         return jsonify({
             "predicted_sentence": ' '.join(sentence),
-            "predictions": [actions[pred] for pred in predictions if pred < len(actions)]
+            "predictions": predictions,
         }), 200
 
     except Exception as e:
-        error_message = f"Exception during prediction: {str(e)}"
-        logging.error(error_message)
-        return jsonify({"error": error_message}), 500
+        logging.error(f"Error during prediction sequence: {str(e)}")
+        return jsonify({"error": f"Failed to predict sequence: {str(e)}"}), 500
+
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

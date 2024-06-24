@@ -1,6 +1,8 @@
 flask
-tensorflow
-numpy
+tensorflow==2.10.0
+numpy==1.21.6
 opencv-python
 Pillow
 flask-cors
+tensorflow-addons==0.18.0
+mediapipe==0.9.2.1

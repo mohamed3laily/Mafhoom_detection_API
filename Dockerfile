@@ -14,6 +14,6 @@ RUN camel_data -i morphology-db-all
 
 COPY ./ /code/
 
-EXPOSE 8000
+EXPOSE 4400
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000" , "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:4400" , "app:app"]
